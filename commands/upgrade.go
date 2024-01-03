@@ -28,7 +28,7 @@ func addUpgrade(topLevel *cobra.Command) {
 	vo := rootOpts
 
 	cmd := &cobra.Command{
-		Use:           "upgrade",
+		Use:           "upgrade [dependencies...]",
 		Short:         "Upgrade local dependencies based on upstream versions",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -36,7 +36,7 @@ func addUpgrade(topLevel *cobra.Command) {
 			return vo.setAndValidate()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpgrade(vo)
+			return runUpgrade(vo, args)
 		},
 	}
 
@@ -45,7 +45,7 @@ func addUpgrade(topLevel *cobra.Command) {
 
 // runUpgrade is the function invoked by 'addUpgrade', responsible for
 // upgrading dependencies.
-func runUpgrade(opts *options) error {
+func runUpgrade(opts *options, args []string) error {
 	client := dependency.NewClient()
 
 	// Check locally first: it's fast, and ensures we're working on clean files
@@ -53,7 +53,7 @@ func runUpgrade(opts *options) error {
 		return fmt.Errorf("checking local dependencies: %w", err)
 	}
 
-	updates, err := client.Upgrade(opts.configFile)
+	updates, err := client.Upgrade(opts.configFile, args)
 	if err != nil {
 		return fmt.Errorf("upgrade dependencies: %w", err)
 	}

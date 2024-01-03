@@ -269,12 +269,20 @@ func (c *Client) RemoteCheck(dependencyFilePath string) ([]string, error) {
 // Upgrade retrieves the most up-to-date version of the dependency and replaces
 // the local version with the most up-to-date version.
 //
+// packages is an optional list of dependencies to upgrade. If empty, all
+// dependencies will be upgraded.
+//
 // Will return an error if checking the versions upstream fails, or if updating
 // files fails.
-func (c *Client) Upgrade(dependencyFilePath string) ([]string, error) {
+func (c *Client) Upgrade(dependencyFilePath string, packages []string) ([]string, error) {
 	externalDeps, err := fromFile(dependencyFilePath)
 	if err != nil {
 		return nil, err
+	}
+
+	depFilter := make(map[string]bool)
+	for _, dep := range packages {
+		depFilter[dep] = true
 	}
 
 	upgrades := make([]string, 0)
@@ -291,7 +299,8 @@ func (c *Client) Upgrade(dependencyFilePath string) ([]string, error) {
 			return nil, err
 		}
 
-		if vu.updateAvailable {
+		filtered := len(depFilter) > 0 && !depFilter[vu.name]
+		if vu.updateAvailable && !filtered {
 			err = upgradeDependency(dependency, &vu)
 			if err != nil {
 				return nil, err
@@ -438,6 +447,11 @@ func (c *Client) checkUpstreamVersions(deps []*Dependency) ([]versionUpdateInfo,
 	versionUpdates := []versionUpdateInfo{}
 	for _, dep := range deps {
 		if dep.Upstream == nil {
+			versionUpdates = append(versionUpdates, versionUpdateInfo{
+				name:            dep.Name,
+				current:         Version{dep.Version, dep.Scheme},
+				updateAvailable: false,
+			})
 			continue
 		}
 
