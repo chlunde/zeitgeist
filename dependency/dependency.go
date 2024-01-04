@@ -274,7 +274,7 @@ func (c *Client) RemoteCheck(dependencyFilePath string) ([]string, error) {
 //
 // Will return an error if checking the versions upstream fails, or if updating
 // files fails.
-func (c *Client) Upgrade(dependencyFilePath string, packages []string) ([]string, error) {
+func (c *Client) Upgrade(basePath, dependencyFilePath string, packages []string) ([]string, error) {
 	externalDeps, err := fromFile(dependencyFilePath)
 	if err != nil {
 		return nil, err
@@ -286,9 +286,24 @@ func (c *Client) Upgrade(dependencyFilePath string, packages []string) ([]string
 	}
 
 	upgrades := make([]string, 0)
-	upgradedDependencies := make([]*Dependency, 0)
+	upgradedDependencies := make([]*Dependency, len(externalDeps.Dependencies))
 
-	versionUpdateInfos, err := c.checkUpstreamVersions(externalDeps.Dependencies)
+	// Preserve the order of the dependencies in case some are filtered out
+	indices := make(map[string]int)
+	for i, dep := range externalDeps.Dependencies {
+		indices[dep.Name] = i
+		upgradedDependencies[i] = dep
+	}
+
+	// Only upgrade the dependencies that are in the packages list
+	dependenciesToCheck := make([]*Dependency, 0)
+	for _, dep := range externalDeps.Dependencies {
+		if len(depFilter) == 0 || depFilter[dep.Name] {
+			dependenciesToCheck = append(dependenciesToCheck, dep)
+		}
+	}
+
+	versionUpdateInfos, err := c.checkUpstreamVersions(dependenciesToCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -299,18 +314,14 @@ func (c *Client) Upgrade(dependencyFilePath string, packages []string) ([]string
 			return nil, err
 		}
 
-		filtered := len(depFilter) > 0 && !depFilter[vu.name]
-		if vu.updateAvailable && !filtered {
-			err = upgradeDependency(dependency, &vu)
+		if vu.updateAvailable {
+			err = upgradeDependency(basePath, dependency, &vu)
 			if err != nil {
 				return nil, err
 			}
 
 			dependency.Version = vu.latest.Version
-			upgradedDependencies = append(
-				upgradedDependencies,
-				dependency,
-			)
+			upgradedDependencies[indices[vu.name]] = dependency
 
 			upgrades = append(
 				upgrades,
@@ -322,11 +333,6 @@ func (c *Client) Upgrade(dependencyFilePath string, packages []string) ([]string
 				),
 			)
 		} else {
-			upgradedDependencies = append(
-				upgradedDependencies,
-				dependency,
-			)
-
 			log.Debugf(
 				"No update available for dependency %s: %s (latest: %s)\n",
 				vu.name,
@@ -356,10 +362,10 @@ func findDependencyByName(dependencies []*Dependency, name string) (*Dependency,
 	return nil, fmt.Errorf("cannot find dependency by name: %s", name)
 }
 
-func upgradeDependency(dependency *Dependency, versionUpdate *versionUpdateInfo) error {
+func upgradeDependency(basePath string, dependency *Dependency, versionUpdate *versionUpdateInfo) error {
 	log.Debugf("running upgradeDependency, versionUpdate %#v", versionUpdate)
 	for _, refPath := range dependency.RefPaths {
-		err := replaceInFile(refPath, versionUpdate)
+		err := replaceInFile(basePath, refPath, versionUpdate)
 		if err != nil {
 			return err
 		}
@@ -368,7 +374,8 @@ func upgradeDependency(dependency *Dependency, versionUpdate *versionUpdateInfo)
 	return nil
 }
 
-func replaceInFile(refPath *RefPath, versionUpdate *versionUpdateInfo) error {
+func replaceInFile(basePath string, refPath *RefPath, versionUpdate *versionUpdateInfo) error {
+	filename := filepath.Join(basePath, refPath.Path)
 	log.Debugf("running replaceInFile, refpath is %#v, versionUpdate %#v", refPath, versionUpdate)
 
 	matcher, err := regexp.Compile(refPath.Match)
@@ -376,7 +383,7 @@ func replaceInFile(refPath *RefPath, versionUpdate *versionUpdateInfo) error {
 		return fmt.Errorf("compiling regex: %w", err)
 	}
 
-	inputFile, err := os.ReadFile(refPath.Path)
+	inputFile, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("reading file: %w", err)
 	}
@@ -403,7 +410,7 @@ func replaceInFile(refPath *RefPath, versionUpdate *versionUpdateInfo) error {
 	upgradedFile := strings.Join(lines, "\n")
 
 	// Finally, write the file out
-	err = os.WriteFile(refPath.Path, []byte(upgradedFile), 0o644)
+	err = os.WriteFile(filename, []byte(upgradedFile), 0o644)
 
 	if err != nil {
 		return fmt.Errorf("writing file: %w", err)

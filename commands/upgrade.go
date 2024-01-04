@@ -53,7 +53,7 @@ func runUpgrade(opts *options, args []string) error {
 		return fmt.Errorf("checking local dependencies: %w", err)
 	}
 
-	updates, err := client.Upgrade(opts.configFile, args)
+	updates, err := client.Upgrade(opts.basePath, opts.configFile, args)
 	if err != nil {
 		return fmt.Errorf("upgrade dependencies: %w", err)
 	}

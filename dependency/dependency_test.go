@@ -18,6 +18,7 @@ package dependency
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -233,9 +234,10 @@ func TestCheckUpstreamVersions(t *testing.T) {
 
 func TestUpgrade(t *testing.T) {
 	dir := t.TempDir()
-	os.Chdir(dir)
-	os.WriteFile("test.txt", []byte("VERSION: 0.0.1\nOTHER: 0.0.1"), 0o644)
-	os.WriteFile("dependencies.yaml", []byte(`
+	testFile := filepath.Join(dir, "test.txt")
+
+	os.WriteFile(testFile, []byte("VERSION: 0.0.1\nOTHER: 0.0.1"), 0o644)
+	os.WriteFile(filepath.Join(dir, "dependencies.yaml"), []byte(`
 dependencies:
   - name: upgrade
     version: 0.0.1
@@ -258,7 +260,7 @@ dependencies:
 `), 0o644)
 
 	client := NewClient()
-	ret, err := client.Upgrade("dependencies.yaml", []string{"upgrade"})
+	ret, err := client.Upgrade(dir, filepath.Join(dir, "dependencies.yaml"), []string{"upgrade"})
 	if err != nil {
 		t.Fatalf("Upgrade failed: %v", err)
 	}
@@ -266,7 +268,7 @@ dependencies:
 	require.Equal(t, len(ret), 1)
 	require.Equal(t, ret[0], "Upgraded dependency upgrade from version 0.0.1 to version 1.0.0")
 
-	got, err := os.ReadFile("test.txt")
+	got, err := os.ReadFile(testFile)
 	require.Nil(t, err)
 	require.Equal(t, string(got), "VERSION: 1.0.0\nOTHER: 0.0.1")
 }
