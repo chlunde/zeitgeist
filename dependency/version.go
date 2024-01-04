@@ -131,3 +131,19 @@ func semverCompare(a, b semver.Version, sensitivity VersionSensitivity) (bool, e
 		return false, fmt.Errorf("unknown version sensitivity: %s", sensitivity)
 	}
 }
+
+// formatVersion preserves the string formatting from the template and ensures the version
+// uses the same style (v-prefix).
+func formatVersion(template, version string) string {
+	// Use same prefix for both versions
+	if strings.HasPrefix(template, "v") {
+		if strings.HasPrefix(version, "v") {
+			return version
+		} else {
+			return "v" + version
+
+		}
+	} else {
+		return strings.TrimPrefix(version, "v")
+	}
+}
